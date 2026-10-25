@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Battery Thermal Management & Heating Cutoff Simulator</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js for live telemetry graphing -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+    }
+
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Custom Scrollbar for Event Log */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #1e293b;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #64748b;
+    }
+
+    /* Glow utilities */
+    .glow-red {
+      box-shadow: 0 0 15px rgba(239, 68, 68, 0.5);
+    }
+    .glow-orange {
+      box-shadow: 0 0 15px rgba(249, 115, 22, 0.5);
+    }
+    .glow-green {
+      box-shadow: 0 0 15px rgba(34, 197, 94, 0.5);
+    }
+    .glow-blue {
+      box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+    }
+
+    /* Toggle Switch Custom Style */
+    .toggle-checkbox:checked {
+      right: 0;
+      border-color: #3b82f6;
+    }
+    .toggle-checkbox:checked + .toggle-label {
+      background-color: #3b82f6;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-3 md:p-6 bg-slate-950 text-slate-100">
+
+  <!-- Top Header / App Title Bar -->
+  <header class="max-w-7xl w-full mx-auto mb-4 flex flex-col sm:flex-row justify-between items-center gap-4 pb-4 border-b border-slate-800">
+    <div class="flex items-center gap-3">
+      <div class="p-2.5 bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30">
+        <i data-lucide="shield-alert" class="w-7 h-7"></i>
+      </div>
+      <div>
+        <h1 class="text-xl md:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+          Battery Thermal Management System
+          <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">v2.4 Pro</span>
+        </h1>
+        <p class="text-xs text-slate-400">Interactive Thermal Management & Critical Safety Cutoff Simulator</p>
+      </div>
+    </div>
+
+    <!-- Quick Presets -->
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-xs text-slate-400 font-medium mr-1 hidden sm:inline">Presets:</span>
+      <button onclick="applyPreset('cold')" class="px-2.5 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-lg border border-slate-700 transition flex items-center gap-1">
+        <i data-lucide="snowflake" class="w-3.5 h-3.5"></i> Cold (-10°C)
+      </button>
+      <button onclick="applyPreset('normal')" class="px-2.5 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded-lg border border-slate-700 transition flex items-center gap-1">
+        <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Normal (22°C)
+      </button>
+      <button onclick="applyPreset('hot')" class="px-2.5 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-lg border border-slate-700 transition flex items-center gap-1">
+        <i data-lucide="flame" class="w-3.5 h-3.5"></i> Overheat (65°C)
+      </button>
+      <button onclick="applyPreset('runaway')" class="px-2.5 py-1.5 text-xs font-medium bg-red-950/80 hover:bg-red-900/80 text-red-300 rounded-lg border border-red-800/60 transition flex items-center gap-1">
+        <i data-lucide="zap" class="w-3.5 h-3.5"></i> High Load Surge
+      </button>
+    </div>
+  </header>
+
+  <!-- Alert Banner for Safety Cutoff Trigger -->
+  <div id="cutoffAlertBanner" class="max-w-7xl w-full mx-auto mb-4 hidden">
+    <div class="bg-red-950/90 border-2 border-red-600 p-3.5 rounded-xl flex items-center justify-between gap-4 animate-pulse text-red-200 shadow-lg shadow-red-950/50">
+      <div class="flex items-center gap-3">
+        <i data-lucide="octagon-alert" class="w-7 h-7 text-red-500 shrink-0"></i>
+        <div>
+          <h3 class="font-bold text-sm md:text-base text-red-100 uppercase tracking-wider">CRITICAL THERMAL SAFETY CUTOFF TRIPPED</h3>
+          <p class="text-xs text-red-300">Battery temperature exceeded high threshold! Relay opened to isolate circuit and prevent damage.</p>
+        </div>
+      </div>
+      <button onclick="resetCutoffFault()" class="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white font-semibold text-xs rounded-lg shadow transition shrink-0">
+        RESET CUTOFF
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Grid Layout -->
+  <main class="max-w-7xl w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4 flex-grow">
+
+    <!-- LEFT COLUMN: Control Panel & Param Settings (4 cols) -->
+    <section class="lg:col-span-4 flex flex-col gap-4">
+
+      <!-- Interactive Controls Card -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 md:p-5 shadow-xl flex flex-col gap-4">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <h2 class="font-semibold text-sm text-slate-200 flex items-center gap-2">
+            <i data-lucide="sliders" class="w-4 h-4 text-blue-400"></i> Control & Simulation Environment
+          </h2>
+          <!-- Sound Toggle -->
+          <button id="soundToggleBtn" onclick="toggleSound()" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 transition" title="Toggle Sound Effects">
+            <i data-lucide="volume-x" id="soundIcon" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <!-- Ambient Temperature Slider -->
+        <div class="space-y-1.5">
+          <div class="flex justify-between items-center text-xs">
+            <label for="ambientSlider" class="text-slate-300 font-medium">Ambient Temperature</label>
+            <span id="ambientVal" class="font-mono text-blue-400 font-semibold text-sm">20 °C</span>
+          </div>
+          <input type="range" id="ambientSlider" min="-10" max="75" value="20" step="0.5" 
+            class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500" 
+            oninput="updateControls()">
+          <div class="flex justify-between text-[10px] text-slate-500 font-mono">
+            <span>-10°C (Freezing)</span>
+            <span>25°C (Room)</span>
+            <span>75°C (Extreme)</span>
+          </div>
+        </div>
+
+        <!-- Charge / Discharge Load -->
+        <div class="space-y-1.5">
+          <div class="flex justify-between items-center text-xs">
+            <label for="loadSlider" class="text-slate-300 font-medium">Battery Load Current (C-Rate / Power)</label>
+            <span id="loadVal" class="font-mono text-amber-400 font-semibold text-sm">0.5 C (Low)</span>
+          </div>
+          <input type="range" id="loadSlider" min="0" max="4" value="0.5" step="0.1" 
+            class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500" 
+            oninput="updateControls()">
+          <div class="flex justify-between text-[10px] text-slate-500 font-mono">
+            <span>0C (Idle)</span>
+            <span>1.5C (Med)</span>
+            <span>4.0C (Extreme Load)</span>
+          </div>
+        </div>
+
+        <!-- Auto vs Manual Mode Switch -->
+        <div class="flex items-center justify-between p-3 bg-slate-950/60 rounded-xl border border-slate-800/80">
+          <div>
+            <div class="text-xs font-semibold text-slate-200">Management Logic Mode</div>
+            <div class="text-[11px] text-slate-400" id="modeDescription">Auto BMS Control Active</div>
+          </div>
+          <button id="modeToggleBtn" onclick="toggleControlMode()" 
+            class="px-3 py-1.5 text-xs font-semibold bg-blue-600/20 text-blue-400 border border-blue-500/40 rounded-lg hover:bg-blue-600/30 transition">
+            AUTOMATIC
+          </button>
+        </div>
+
+        <!-- Threshold Settings Accordion / Box -->
+        <div class="p-3 bg-slate-950/40 rounded-xl border border-slate-800 space-y-3">
+          <div class="text-xs font-semibold text-slate-300 flex items-center justify-between">
+            <span>Safety Threshold Parameters</span>
+            <i data-lucide="settings-2" class="w-3.5 h-3.5 text-slate-400"></i>
+          </div>
+
+          <!-- Low Temp Heating Threshold -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-[11px]">
+              <span class="text-cyan-400">Heating Trigger Limit:</span>
+              <span id="lowThreshVal" class="font-mono font-medium text-slate-300">5 °C</span>
+            </div>
+            <input type="range" id="lowThreshSlider" min="-5" max="15" value="5" step="1" 
+              class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500" 
+              oninput="updateControls()">
+          </div>
+
+          <!-- High Temp Cutoff Threshold -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-[11px]">
+              <span class="text-red-400">High Thermal Cutoff Limit:</span>
+              <span id="highThreshVal" class="font-mono font-medium text-slate-300">50 °C</span>
+            </div>
+            <input type="range" id="highThreshSlider" min="35" max="70" value="50" step="1" 
+              class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-red-500" 
+              oninput="updateControls()">
+          </div>
+        </div>
+
+        <!-- Manual Controls (Visible only when in Manual Mode) -->
+        <div id="manualControlsSection" class="p-3 bg-slate-800/40 border border-amber-500/30 rounded-xl space-y-2 hidden">
+          <div class="text-xs font-semibold text-amber-400 flex items-center gap-1.5">
+            <i data-lucide="hand" class="w-3.5 h-3.5"></i> Manual Overrides
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="manualHeaterBtn" onclick="toggleManualHeater()" class="py-1.5 text-xs bg-slate-800 text-slate-300 rounded border border-slate-700 hover:bg-slate-700 font-medium transition">
+              Heater: OFF
+            </button>
+            <button id="manualRelayBtn" onclick="toggleManualRelay()" class="py-1.5 text-xs bg-slate-800 text-slate-300 rounded border border-slate-700 hover:bg-slate-700 font-medium transition">
+              Relay: CLOSED
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Quick Status Indicators / Digital Readouts -->
+      <div class="grid grid-cols-2 gap-3">
+        <!-- Temp Readout Card -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-md flex flex-col justify-between">
+          <div class="text-xs text-slate-400 font-medium flex items-center justify-between">
+            <span>Battery Temp</span>
+            <i data-lucide="thermometer" id="tempThermometerIcon" class="w-4 h-4 text-emerald-400"></i>
+          </div>
+          <div class="mt-2">
+            <div id="tempReadout" class="text-2xl font-bold font-mono text-emerald-400">22.0 °C</div>
+            <div id="tempFahrenheit" class="text-[10px] text-slate-500 font-mono">71.6 °F</div>
+          </div>
+        </div>
+
+        <!-- Heater Status Card -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-md flex flex-col justify-between">
+          <div class="text-xs text-slate-400 font-medium flex items-center justify-between">
+            <span>Heating Element</span>
+            <i data-lucide="flame" id="heaterIcon" class="w-4 h-4 text-slate-600"></i>
+          </div>
+          <div class="mt-2">
+            <div id="heaterStatusText" class="text-lg font-bold text-slate-400">IDLE</div>
+            <div id="heaterPowerText" class="text-[10px] text-slate-500 font-mono">0 W Output</div>
+          </div>
+        </div>
+
+        <!-- Relay Status Card -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-md flex flex-col justify-between">
+          <div class="text-xs text-slate-400 font-medium flex items-center justify-between">
+            <span>Safety Cutoff Switch</span>
+            <i data-lucide="power" id="relayIcon" class="w-4 h-4 text-emerald-400"></i>
+          </div>
+          <div class="mt-2">
+            <div id="relayStatusText" class="text-lg font-bold text-emerald-400">CONNECTED</div>
+            <div id="relaySubText" class="text-[10px] text-slate-500">Normal Circuit Operation</div>
+          </div>
+        </div>
+
+        <!-- Power / Load Status Card -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-md flex flex-col justify-between">
+          <div class="text-xs text-slate-400 font-medium flex items-center justify-between">
+            <span>Active Power Draw</span>
+            <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i>
+          </div>
+          <div class="mt-2">
+            <div id="powerDrawText" class="text-xl font-bold font-mono text-slate-200">12.5 W</div>
+            <div id="thermalRateText" class="text-[10px] text-slate-500 font-mono">+0.05 °C/s net</div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- RIGHT COLUMN: Visual Simulation Canvas & Telemetry Chart (8 cols) -->
+    <section class="lg:col-span-8 flex flex-col gap-4">
+
+      <!-- Interactive Visual Diagram Canvas Card -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col">
+        <div class="flex items-center justify-between mb-2 pb-2 border-b border-slate-800">
+          <h2 class="font-semibold text-sm text-slate-200 flex items-center gap-2">
+            <i data-lucide="cpu" class="w-4 h-4 text-emerald-400"></i> Real-time Circuit & Thermal Animation
+          </h2>
+          <div class="flex items-center gap-2 text-xs">
+            <span class="flex items-center gap-1 text-slate-400">
+              <span class="w-2 h-2 rounded-full bg-cyan-400 inline-block"></span> Cold
+            </span>
+            <span class="flex items-center gap-1 text-slate-400">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span> Safe
+            </span>
+            <span class="flex items-center gap-1 text-slate-400">
+              <span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span> Overheat
+            </span>
+          </div>
+        </div>
+
+        <!-- Canvas Container -->
+        <div class="relative w-full h-[280px] bg-slate-950 rounded-xl overflow-hidden border border-slate-800/80">
+          <canvas id="circuitCanvas" class="w-full h-full block"></canvas>
+        </div>
+      </div>
+
+      <!-- Real-time Chart and System Terminal Stack -->
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+
+        <!-- Chart Section (7 cols on desktop) -->
+        <div class="md:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="font-semibold text-xs text-slate-200 flex items-center gap-1.5">
+              <i data-lucide="line-chart" class="w-4 h-4 text-blue-400"></i> Temperature Telemetry (°C vs Time)
+            </h3>
+            <span class="text-[10px] text-slate-500 font-mono">Live Sync</span>
+          </div>
+          <div class="relative w-full h-[180px]">
+            <canvas id="telemetryChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Real-Time Event Terminal Log (5 cols on desktop) -->
+        <div class="md:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col">
+          <div class="flex items-center justify-between mb-2 pb-1 border-b border-slate-800">
+            <h3 class="font-semibold text-xs text-slate-200 flex items-center gap-1.5">
+              <i data-lucide="terminal" class="w-4 h-4 text-amber-400"></i> System Event Log
+            </h3>
+            <button onclick="clearLog()" class="text-[10px] text-slate-500 hover:text-slate-300">Clear</button>
+          </div>
+          <div id="eventTerminal" class="w-full h-[180px] bg-slate-950 rounded-xl p-2.5 font-mono text-[11px] overflow-y-auto space-y-1.5 border border-slate-800/80">
+            <!-- Logs appended here dynamically -->
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Bottom Footer -->
+  <footer class="max-w-7xl w-full mx-auto mt-4 pt-3 border-t border-slate-800 flex flex-col sm:flex-row justify-between items-center text-[11px] text-slate-500 gap-2">
+    <div>Battery Thermal Management System (BTMS) Educational Simulator</div>
+    <div class="flex gap-4">
+      <span>Cutoff Hysteresis: <strong class="text-slate-400">2.0°C</strong></span>
+      <span>Sensor Sampling: <strong class="text-slate-400">10 Hz</strong></span>
+    </div>
+  </footer>
+
+  <!-- Simulation & Application Logic JavaScript -->
+  <script>
+    // --- Application State ---
+    const state = {
+      ambientTemp: 20.0,       // Ambient temperature in °C
+      batteryTemp: 22.0,       // Battery cell temperature in °C
+      loadCurrent: 0.5,        // Load C-Rate
+      isAutoMode: true,        // Auto BMS logic vs manual override
+      
+      // Safety Limits
+      lowTempThreshold: 5.0,   // Low temp heating activation limit (°C)
+      highTempCutoff: 50.0,    // High temp emergency cutoff limit (°C)
+      hysteresis: 2.0,         // Hysteresis buffer to prevent relay oscillating (°C)
+
+      // Hardware States
+      heaterActive: false,     // Heating pad status
+      relayClosed: true,       // Main safety relay switch (true = connected, false = cut off)
+      cutoffTripped: false,    // Hardware fault state
+
+      // Manual Override States
+      manualHeater: false,
+      manualRelay: true,
+
+      // Telemetry Data
+      timeStep: 0,
+      soundEnabled: false
+    };
+
+    // Global Constants
+    const THERMAL_MASS = 12.0; // Simulated battery thermal heat capacity factor
+    const HEATER_POWER = 3.2;  // Heating rate °C/s scale
+    const JOULE_HEATING_FACTOR = 0.85; // Heating generated by current load
+
+    // Web Audio API Context for Alert Sounds
+    let audioCtx = null;
+
+    function playBeep(freq = 880, type = 'sine', duration = 0.15) {
+      if (!state.soundEnabled) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {
+        console.warn("Audio context error", e);
+      }
+    }
+
+    function toggleSound() {
+      state.soundEnabled = !state.soundEnabled;
+      const btn = document.getElementById('soundToggleBtn');
+      const icon = document.getElementById('soundIcon');
+      if (state.soundEnabled) {
+        btn.classList.add('text-blue-400');
+        icon.setAttribute('data-lucide', 'volume-2');
+        addLog("Audio alarm alerts ENABLED", "system");
+        playBeep(600, 'sine', 0.1);
+      } else {
+        btn.classList.remove('text-blue-400');
+        icon.setAttribute('data-lucide', 'volume-x');
+        addLog("Audio alarm alerts DISABLED", "system");
+      }
+      lucide.createIcons();
+    }
+
+    // --- Chart Initialization ---
+    let telemetryChart;
+    const maxDataPoints = 35;
+    const chartData = {
+      labels: Array(maxDataPoints).fill(''),
+      datasets: [
+        {
+          label: 'Battery Temp (°C)',
+          borderColor: '#10b981',
+          borderWidth: 2.5,
+          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+          data: Array(maxDataPoints).fill(22)
+        },
+        {
+          label: 'Cutoff Limit (°C)',
+          borderColor: '#ef4444',
+          borderWidth: 1.5,
+          borderDash: [4, 4],
+          pointRadius: 0,
+          fill: false,
+          data: Array(maxDataPoints).fill(50)
+        },
+        {
+          label: 'Heating Limit (°C)',
+          borderColor: '#06b6d4',
+          borderWidth: 1.5,
+          borderDash: [4, 4],
+          pointRadius: 0,
+          fill: false,
+          data: Array(maxDataPoints).fill(5)
+        }
+      ]
+    };
+
+    function initChart() {
+      const ctx = document.getElementById('telemetryChart').getContext('2d');
+      telemetryChart = new Chart(ctx, {
+        type: 'line',
+        data: chartData,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          scales: {
+            x: { display: false },
+            y: {
+              grid: { color: '#1e293b' },
+              ticks: { color: '#94a3b8', font: { size: 10 } },
+              suggestedMin: -10,
+              suggestedMax: 70
+            }
+          },
+          plugins: {
+            legend: {
+              labels: { color: '#cbd5e1', font: { size: 10 }, boxWidth: 12 }
+            }
+          }
+        }
+      });
+    }
+
+    // --- Control Updates ---
+    function updateControls() {
+      state.ambientTemp = parseFloat(document.getElementById('ambientSlider').value);
+      state.loadCurrent = parseFloat(document.getElementById('loadSlider').value);
+      state.lowTempThreshold = parseFloat(document.getElementById('lowThreshSlider').value);
+      state.highTempCutoff = parseFloat(document.getElementById('highThreshSlider').value);
+
+      document.getElementById('ambientVal').textContent = `${state.ambientTemp.toFixed(1)} °C`;
+      document.getElementById('loadVal').textContent = `${state.loadCurrent.toFixed(1)} C`;
+      document.getElementById('lowThreshVal').textContent = `${state.lowTempThreshold.toFixed(0)} °C`;
+      document.getElementById('highThreshVal').textContent = `${state.highTempCutoff.toFixed(0)} °C`;
+
+      // Update Chart static lines
+      chartData.datasets[1].data = Array(maxDataPoints).fill(state.highTempCutoff);
+      chartData.datasets[2].data = Array(maxDataPoints).fill(state.lowTempThreshold);
+    }
+
+    function toggleControlMode() {
+      state.isAutoMode = !state.isAutoMode;
+      const btn = document.getElementById('modeToggleBtn');
+      const desc = document.getElementById('modeDescription');
+      const manualSec = document.getElementById('manualControlsSection');
+
+      if (state.isAutoMode) {
+        btn.textContent = 'AUTOMATIC';
+        btn.className = 'px-3 py-1.5 text-xs font-semibold bg-blue-600/20 text-blue-400 border border-blue-500/40 rounded-lg hover:bg-blue-600/30 transition';
+        desc.textContent = 'Auto BMS Logic Active';
+        manualSec.classList.add('hidden');
+        addLog("Switched control mode to AUTOMATIC", "info");
+      } else {
+        btn.textContent = 'MANUAL OVERRIDE';
+        btn.className = 'px-3 py-1.5 text-xs font-semibold bg-amber-600/20 text-amber-400 border border-amber-500/40 rounded-lg hover:bg-amber-600/30 transition';
+        desc.textContent = 'Manual Hardware Control';
+        manualSec.classList.remove('hidden');
+        addLog("Switched control mode to MANUAL OVERRIDE", "warn");
+      }
+    }
+
+    function toggleManualHeater() {
+      state.manualHeater = !state.manualHeater;
+      document.getElementById('manualHeaterBtn').textContent = `Heater: ${state.manualHeater ? 'ON' : 'OFF'}`;
+      document.getElementById('manualHeaterBtn').className = state.manualHeater 
+        ? 'py-1.5 text-xs bg-orange-600 text-white rounded font-medium shadow transition'
+        : 'py-1.5 text-xs bg-slate-800 text-slate-300 rounded border border-slate-700 hover:bg-slate-700 font-medium transition';
+    }
+
+    function toggleManualRelay() {
+      state.manualRelay = !state.manualRelay;
+      document.getElementById('manualRelayBtn').textContent = `Relay: ${state.manualRelay ? 'CLOSED' : 'OPEN'}`;
+      document.getElementById('manualRelayBtn').className = state.manualRelay 
+        ? 'py-1.5 text-xs bg-emerald-600 text-white rounded font-medium shadow transition'
+        : 'py-1.5 text-xs bg-red-600 text-white rounded font-medium shadow transition';
+    }
+
+    function applyPreset(preset) {
+      if (preset === 'cold') {
+        document.getElementById('ambientSlider').value = -10;
+        document.getElementById('loadSlider').value = 0.2;
+        addLog("Applied Preset: Extreme Cold (-10°C)", "info");
+      } else if (preset === 'normal') {
+        document.getElementById('ambientSlider').value = 22;
+        document.getElementById('loadSlider').value = 0.8;
+        addLog("Applied Preset: Normal Operation (22°C)", "info");
+      } else if (preset === 'hot') {
+        document.getElementById('ambientSlider').value = 62;
+        document.getElementById('loadSlider').value = 1.0;
+        addLog("Applied Preset: Environmental Overheat (62°C)", "warn");
+      } else if (preset === 'runaway') {
+        document.getElementById('ambientSlider').value = 35;
+        document.getElementById('loadSlider').value = 3.8;
+        addLog("Applied Preset: High Discharge Power Surge", "warn");
+      }
+      updateControls();
+    }
+
+    function resetCutoffFault() {
+      state.cutoffTripped = false;
+      document.getElementById('cutoffAlertBanner').classList.add('hidden');
+      addLog("SAFETY FAULT RESET: System restored to nominal standby.", "info");
+    }
+
+    // --- Terminal Event Logging ---
+    function addLog(msg, type = 'info') {
+      const terminal = document.getElementById('eventTerminal');
+      const entry = document.createElement('div');
+      const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      let colorClass = 'text-slate-300';
+      let prefix = '[INFO]';
+
+      if (type === 'warn') {
+        colorClass = 'text-amber-400';
+        prefix = '[WARN]';
+      } else if (type === 'danger') {
+        colorClass = 'text-red-400 font-bold';
+        prefix = '[ALERT]';
+      } else if (type === 'system') {
+        colorClass = 'text-cyan-400';
+        prefix = '[SYS]';
+      }
+
+      entry.className = `${colorClass} flex gap-2`;
+      entry.innerHTML = `<span class="text-slate-500 shrink-0">${timeStr}</span> <span class="shrink-0 font-bold">${prefix}</span> <span>${msg}</span>`;
+
+      terminal.appendChild(entry);
+      terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    function clearLog() {
+      document.getElementById('eventTerminal').innerHTML = '';
+      addLog("Event log terminal cleared.", "system");
+    }
+
+    // --- Thermal Simulation Physics Engine ---
+    function updatePhysics() {
+      // 1. Environmental thermal exchange (Newton's Law of Cooling)
+      const heatExchange = (state.ambientTemp - state.batteryTemp) * 0.08;
+
+      // 2. Joule heating from battery load (I^2 * R heating effect)
+      // Heating only occurs if relay is CLOSED (current flowing)
+      const currentActive = state.relayClosed;
+      const jouleHeating = currentActive ? Math.pow(state.loadCurrent, 2) * JOULE_HEATING_FACTOR : 0;
+
+      // 3. Heating element input
+      const heaterHeating = state.heaterActive ? HEATER_POWER : 0;
+
+      // Net Temperature delta
+      const netHeatInput = heatExchange + jouleHeating + heaterHeating;
+      const tempDelta = (netHeatInput / THERMAL_MASS);
+
+      state.batteryTemp += tempDelta;
+
+      // --- Thermal Management Control Logic ---
+      if (state.isAutoMode) {
+        // High Temp Safety Cutoff Check
+        if (state.batteryTemp >= state.highTempCutoff && !state.cutoffTripped) {
+          state.cutoffTripped = true;
+          state.relayClosed = false;
+          state.heaterActive = false; // Turn off heating when overheating
+          document.getElementById('cutoffAlertBanner').classList.remove('hidden');
+          addLog(`CRITICAL OVERHEAT! Battery reached ${state.batteryTemp.toFixed(1)}°C. Cutoff switch TRIPPED!`, "danger");
+          playBeep(1200, 'sawtooth', 0.4);
+        }
+
+        // Automatic Heating Control with Hysteresis
+        if (!state.cutoffTripped) {
+          if (state.batteryTemp <= state.lowTempThreshold && !state.heaterActive) {
+            state.heaterActive = true;
+            addLog(`Low temperature detected (${state.batteryTemp.toFixed(1)}°C). Heating element ACTIVATED.`, "warn");
+            playBeep(700, 'sine', 0.15);
+          } else if (state.batteryTemp >= (state.lowTempThreshold + state.hysteresis) && state.heaterActive) {
+            state.heaterActive = false;
+            addLog(`Optimal temperature restored (${state.batteryTemp.toFixed(1)}°C). Heating element turned IDLE.`, "info");
+          }
+
+          // Safety Relay Recovery (if not tripped by fault)
+          state.relayClosed = true;
+        } else {
+          // If in cutoff fault state, relay remains open
+          state.relayClosed = false;
+        }
+      } else {
+        // Manual Mode Handling
+        state.heaterActive = state.manualHeater;
+        state.relayClosed = state.manualRelay;
+      }
+
+      // Update Telemetry Chart
+      state.timeStep++;
+      chartData.datasets[0].data.shift();
+      chartData.datasets[0].data.push(state.batteryTemp);
+
+      // Dynamically color line chart based on temp
+      if (state.batteryTemp >= state.highTempCutoff) {
+        chartData.datasets[0].borderColor = '#ef4444';
+      } else if (state.batteryTemp <= state.lowTempThreshold) {
+        chartData.datasets[0].borderColor = '#06b6d4';
+      } else {
+        chartData.datasets[0].borderColor = '#10b981';
+      }
+
+      telemetryChart.update('none');
+
+      // Update Telemetry UI Text Elements
+      updateUIReadouts(tempDelta);
+    }
+
+    function updateUIReadouts(netRate) {
+      // Temp Readout
+      const tempReadout = document.getElementById('tempReadout');
+      tempReadout.textContent = `${state.batteryTemp.toFixed(1)} °C`;
+      document.getElementById('tempFahrenheit').textContent = `${((state.batteryTemp * 9/5) + 32).toFixed(1)} °F`;
+
+      const thermIcon = document.getElementById('tempThermometerIcon');
+
+      if (state.batteryTemp >= state.highTempCutoff) {
+        tempReadout.className = "text-2xl font-bold font-mono text-red-500 animate-pulse";
+        thermIcon.className = "w-4 h-4 text-red-500";
+      } else if (state.batteryTemp <= state.lowTempThreshold) {
+        tempReadout.className = "text-2xl font-bold font-mono text-cyan-400";
+        thermIcon.className = "w-4 h-4 text-cyan-400";
+      } else {
+        tempReadout.className = "text-2xl font-bold font-mono text-emerald-400";
+        thermIcon.className = "w-4 h-4 text-emerald-400";
+      }
+
+      // Heater Readout
+      const heaterText = document.getElementById('heaterStatusText');
+      const heaterPower = document.getElementById('heaterPowerText');
+      const heaterIcon = document.getElementById('heaterIcon');
+
+      if (state.heaterActive) {
+        heaterText.textContent = "HEATING";
+        heaterText.className = "text-lg font-bold text-orange-400 animate-pulse";
+        heaterPower.textContent = "45.0 W Thermal Power";
+        heaterIcon.className = "w-4 h-4 text-orange-400";
+      } else {
+        heaterText.textContent = "IDLE";
+        heaterText.className = "text-lg font-bold text-slate-400";
+        heaterPower.textContent = "0 W Output";
+        heaterIcon.className = "w-4 h-4 text-slate-600";
+      }
+
+      // Relay Readout
+      const relayText = document.getElementById('relayStatusText');
+      const relaySub = document.getElementById('relaySubText');
+      const relayIcon = document.getElementById('relayIcon');
+
+      if (state.relayClosed) {
+        relayText.textContent = "CONNECTED";
+        relayText.className = "text-lg font-bold text-emerald-400";
+        relaySub.textContent = "Load Circuit Active";
+        relayIcon.className = "w-4 h-4 text-emerald-400";
+      } else {
+        relayText.textContent = "DISCONNECTED";
+        relayText.className = "text-lg font-bold text-red-500";
+        relaySub.textContent = state.cutoffTripped ? "Fault Cutoff Active" : "Circuit Isolated";
+        relayIcon.className = "w-4 h-4 text-red-500";
+      }
+
+      // Power Draw Readout
+      const activeWatts = state.relayClosed ? (state.loadCurrent * 3.7 * 8).toFixed(1) : "0.0";
+      document.getElementById('powerDrawText').textContent = `${activeWatts} W`;
+      
+      const rateSign = netRate >= 0 ? "+" : "";
+      document.getElementById('thermalRateText').textContent = `${rateSign}${(netRate * 10).toFixed(2)} °C/s trend`;
+    }
+
+    // --- Visual Canvas Rendering Engine ---
+    let electronParticles = [];
+    const NUM_PARTICLES = 20;
+
+    function initParticles() {
+      electronParticles = [];
+      for (let i = 0; i < NUM_PARTICLES; i++) {
+        electronParticles.push({
+          progress: Math.random(), // 0 to 1 along circuit loop
+          speed: 0.005 + Math.random() * 0.005
+        });
+      }
+    }
+
+    function renderCircuit() {
+      const canvas = document.getElementById('circuitCanvas');
+      if (!canvas) return;
+
+      // Adjust canvas crispness for high DPI displays
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+
+      if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+      }
+
+      const ctx = canvas.getContext('2d');
+      ctx.save();
+      ctx.scale(dpr, dpr);
+
+      const w = rect.width;
+      const h = rect.height;
+
+      // Clear Canvas
+      ctx.clearRect(0, 0, w, h);
+
+      // --- 1. Draw Circuit Wiring ---
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // Circuit wire coordinates
+      const wireMargin = 40;
+      const batX = w * 0.38;
+      const batY = h * 0.5;
+      const batW = 120;
+      const batH = 150;
+
+      // Circuit Wire Loop
+      ctx.beginPath();
+      // Top line from battery to right load
+      ctx.moveTo(batX + batW/2, batY - batH/2);
+      ctx.lineTo(w - wireMargin, batY - batH/2);
+      // Down right
+      ctx.lineTo(w - wireMargin, batY + batH/2);
+      // Bottom line with relay break
+      const relayX = w * 0.65;
+      ctx.lineTo(relayX + 25, batY + batH/2);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(relayX - 25, batY + batH/2);
+      ctx.lineTo(wireMargin, batY + batH/2);
+      ctx.lineTo(wireMargin, batY - batH/2);
+      ctx.lineTo(batX - batW/2, batY - batH/2);
+      ctx.stroke();
+
+      // --- 2. Draw Electron Flow Particles (if Relay Closed and Load > 0) ---
+      if (state.relayClosed && state.loadCurrent > 0) {
+        ctx.fillStyle = '#f59e0b';
+        ctx.shadowColor = '#f59e0b';
+        ctx.shadowBlur = 8;
+
+        const currentSpeed = state.loadCurrent * 0.004;
+
+        electronParticles.forEach(p => {
+          p.progress = (p.progress + currentSpeed) % 1.0;
+          
+          // Calculate particle XY based on progress along loop
+          let px = 0, py = 0;
+          const pVal = p.progress;
+
+          if (pVal < 0.3) { // Top segment rightward
+            const t = pVal / 0.3;
+            px = (batX + batW/2) + t * (w - wireMargin - (batX + batW/2));
+            py = batY - batH/2;
+          } else if (pVal < 0.5) { // Down right segment
+            const t = (pVal - 0.3) / 0.2;
+            px = w - wireMargin;
+            py = (batY - batH/2) + t * batH;
+          } else if (pVal < 0.8) { // Bottom segment leftward
+            const t = (pVal - 0.5) / 0.3;
+            px = (w - wireMargin) - t * (w - wireMargin - wireMargin);
+            py = batY + batH/2;
+          } else { // Up left segment & top return
+            const t = (pVal - 0.8) / 0.2;
+            px = wireMargin;
+            py = (batY + batH/2) - t * batH;
+          }
+
+          ctx.beginPath();
+          ctx.arc(px, py, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        ctx.shadowBlur = 0;
+      }
+
+      // --- 3. Draw Safety Relay / MOSFET Switch ---
+      ctx.fillStyle = '#1e293b';
+      ctx.strokeStyle = state.relayClosed ? '#10b981' : '#ef4444';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(relayX - 35, batY + batH/2 - 25, 70, 50, 8);
+      ctx.fill();
+      ctx.stroke();
+
+      // Relay Switch Contacts
+      ctx.fillStyle = '#64748b';
+      ctx.beginPath();
+      ctx.arc(relayX - 20, batY + batH/2, 4, 0, Math.PI * 2);
+      ctx.arc(relayX + 20, batY + batH/2, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Contact Arm
+      ctx.strokeStyle = state.relayClosed ? '#10b981' : '#ef4444';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(relayX - 20, batY + batH/2);
+      if (state.relayClosed) {
+        ctx.lineTo(relayX + 20, batY + batH/2); // Closed contact
+      } else {
+        ctx.lineTo(relayX + 12, batY + batH/2 - 18); // Open contact (disconnected)
+      }
+      ctx.stroke();
+
+      // Switch Label
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '10px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText("CUTOFF RELAY", relayX, batY + batH/2 + 38);
+
+      // --- 4. Draw Battery Cell Body & Dynamic Temperature Gradient ---
+      // Determine Battery Cell Gradient Color based on temperature
+      let colStart, colEnd;
+      if (state.batteryTemp <= 5) {
+        // Cold freezing cyan/blue
+        colStart = '#0284c7';
+        colEnd = '#06b6d4';
+      } else if (state.batteryTemp >= state.highTempCutoff) {
+        // Critical Overheat Red
+        colStart = '#dc2626';
+        colEnd = '#991b1b';
+      } else if (state.batteryTemp > 40) {
+        // Warning Warm Amber/Orange
+        colStart = '#f59e0b';
+        colEnd = '#ea580c';
+      } else {
+        // Safe Operating Green
+        colStart = '#059669';
+        colEnd = '#10b981';
+      }
+
+      const batGrad = ctx.createLinearGradient(batX - batW/2, batY, batX + batW/2, batY);
+      batGrad.addColorStop(0, colStart);
+      batGrad.addColorStop(1, colEnd);
+
+      // Battery Shadow Glow
+      ctx.shadowColor = colStart;
+      ctx.shadowBlur = state.batteryTemp >= state.highTempCutoff ? 25 : 10;
+
+      // Battery Outer Shell
+      ctx.fillStyle = batGrad;
+      ctx.beginPath();
+      ctx.roundRect(batX - batW/2, batY - batH/2, batW, batH, 12);
+      ctx.fill();
+
+      ctx.shadowBlur = 0; // Reset shadow
+
+      // Battery Metallic Terminal Cap
+      ctx.fillStyle = '#94a3b8';
+      ctx.beginPath();
+      ctx.roundRect(batX - 15, batY - batH/2 - 10, 30, 10, [4, 4, 0, 0]);
+      ctx.fill();
+
+      // Battery Thermal Core Overlay
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.beginPath();
+      ctx.roundRect(batX - batW/2 + 8, batY - batH/2 + 8, batW - 16, batH - 16, 8);
+      ctx.fill();
+
+      // Battery Label Text inside Cell
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 13px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText("Li-ion CELL", batX, batY - 20);
+
+      ctx.font = 'bold 20px JetBrains Mono, monospace';
+      ctx.fillText(`${state.batteryTemp.toFixed(1)}°C`, batX, batY + 10);
+
+      ctx.font = '10px Inter, sans-serif';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      const statusLabel = state.batteryTemp >= state.highTempCutoff 
+        ? "OVERHEAT FAULT" 
+        : (state.batteryTemp <= state.lowTempThreshold ? "COLD TEMP" : "NOMINAL");
+      ctx.fillText(statusLabel, batX, batY + 30);
+
+      // --- 5. Draw Heating Element Pad underneath/attached to battery ---
+      const heaterY = batY + batH/2 + 8;
+      ctx.fillStyle = state.heaterActive ? '#f97316' : '#334155';
+      ctx.strokeStyle = state.heaterActive ? '#ffedd5' : '#475569';
+
+      if (state.heaterActive) {
+        ctx.shadowColor = '#f97316';
+        ctx.shadowBlur = 15;
+      }
+
+      ctx.beginPath();
+      ctx.roundRect(batX - batW/2 + 10, heaterY, batW - 20, 12, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.shadowBlur = 0;
+
+      // Heating Coil Patterns
+      if (state.heaterActive) {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let x = batX - batW/2 + 18; x < batX + batW/2 - 18; x += 8) {
+          ctx.moveTo(x, heaterY + 3);
+          ctx.lineTo(x + 4, heaterY + 9);
+        }
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = state.heaterActive ? '#f97316' : '#64748b';
+      ctx.font = '10px Inter, sans-serif';
+      ctx.fillText(state.heaterActive ? "HEATER PAD (ACTIVE)" : "HEATER PAD (IDLE)", batX, heaterY + 24);
+
+      // --- 6. Draw Load Component (Motor/Vehicle Load) ---
+      const loadX = w - wireMargin;
+      const loadY = batY;
+
+      ctx.fillStyle = '#1e293b';
+      ctx.strokeStyle = state.relayClosed && state.loadCurrent > 0 ? '#f59e0b' : '#475569';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(loadX, loadY, 26, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 12px Inter, sans-serif';
+      ctx.fillText("LOAD", loadX, loadY - 2);
+      ctx.font = '10px JetBrains Mono, monospace';
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(`${state.loadCurrent.toFixed(1)}C`, loadX, loadY + 12);
+
+      ctx.restore();
+    }
+
+    // --- Animation Loop ---
+    function animate() {
+      renderCircuit();
+      requestAnimationFrame(animate);
+    }
+
+    // --- Main Initialization ---
+    window.onload = function() {
+      // Initialize Canvas Particle array
+      initParticles();
+
+      // Initialize Dynamic Chart
+      initChart();
+
+      // Update Controls UI
+      updateControls();
+
+      // Log Startup Event
+      addLog("Battery Thermal Management System Initialized.", "system");
+      addLog("Monitoring sensor data loop running at 10Hz.", "info");
+
+      // Render Lucide Icons
+      lucide.createIcons();
+
+      // Start Physics Simulation Loop (10 ticks per second)
+      setInterval(updatePhysics, 100);
+
+      // Start Animation Loop (60 FPS Canvas rendering)
+      animate();
+    };
+
+    // Handle Window Resize for Canvas scale adjustments
+    window.onresize = function() {
+      renderCircuit();
+    };
+  </script>
+</body>
+</html>
